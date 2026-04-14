@@ -1,43 +1,37 @@
 #!/bin/bash
-# =============================================================
+# ============================================================
 # سكريبت إعداد نظام الحضانة على cPanel
-# شغّل هذا السكريبت مرة واحدة بعد رفع الملفات
-# =============================================================
+# شغّل هذا السكريبت من Terminal Terminal أو SSH
+# ============================================================
+set -e
 
 echo "======================================"
 echo "  إعداد نظام إدارة الحضانات"
 echo "======================================"
 
-# 1. تثبيت الـ dependencies
-echo ""
+# Install dependencies
 echo "[1/3] تثبيت المكتبات..."
-npm install
-npm install --prefix client
-npm install --prefix server
+npm install --prefix server --omit=dev
 
-# 2. بناء المشروع
-echo ""
-echo "[2/3] بناء المشروع (Build)..."
-npm run build --prefix client
-npm run build --prefix server
+# Build (skip if dist/ already exists)
+if [ ! -f "server/dist/index.js" ]; then
+  echo "[2/3] بناء السيرفر..."
+  npm run build --prefix server
+else
+  echo "[2/3] السيرفر مبني بالفعل ✓"
+fi
 
-# 3. إنشاء ملف .env إذا لم يكن موجوداً
-echo ""
-echo "[3/3] إعداد ملف البيئة..."
+# Create .env
+echo "[3/3] إعداد ملف .env..."
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "تم إنشاء ملف .env - تأكد من تغيير JWT_SECRET"
-else
-  echo "ملف .env موجود بالفعل"
+  echo ""
+  echo "  ⚠️  تم إنشاء ملف .env"
+  echo "  افتحه وعدّل بيانات MySQL و JWT_SECRET"
 fi
 
 echo ""
 echo "======================================"
-echo "  تم الإعداد بنجاح!"
-echo ""
-echo "  لتشغيل السيستم:"
-echo "  npm start"
-echo ""
-echo "  أو اضبط cPanel Node.js App على:"
-echo "  Startup File: server/dist/index.js"
+echo "  تم! الخطوة الأخيرة:"
+echo "  عدّل ملف .env ثم شغّل: npm start"
 echo "======================================"

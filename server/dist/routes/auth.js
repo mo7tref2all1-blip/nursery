@@ -9,19 +9,17 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const db_1 = __importDefault(require("../db"));
 const router = (0, express_1.Router)();
 const JWT_SECRET = process.env.JWT_SECRET || 'nursery-secret-key-2024';
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    if (!username || !password) {
+    if (!username || !password)
         return res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان' });
-    }
-    const user = db_1.default.prepare('SELECT * FROM users WHERE username = ?').get(username);
-    if (!user) {
+    const [rows] = await db_1.default.execute('SELECT * FROM users WHERE username = ?', [username]);
+    const user = rows[0];
+    if (!user)
         return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-    }
-    const valid = bcryptjs_1.default.compareSync(password, user.password_hash);
-    if (!valid) {
+    const valid = await bcryptjs_1.default.compare(password, user.password_hash);
+    if (!valid)
         return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-    }
     const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
     return res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
 });

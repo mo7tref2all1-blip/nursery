@@ -6,129 +6,118 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = __importDefault(require("../db"));
 const router = (0, express_1.Router)();
-// Get all teachers
-router.get('/', (req, res) => {
-    const teachers = db_1.default.prepare('SELECT * FROM teachers ORDER BY created_at DESC').all();
-    return res.json(teachers);
+// ── CRUD ──────────────────────────────────────────────────────────────
+router.get('/', async (_req, res) => {
+    const [rows] = await db_1.default.execute('SELECT * FROM teachers ORDER BY created_at DESC');
+    return res.json(rows);
 });
-// Get single teacher
-router.get('/:id', (req, res) => {
-    const teacher = db_1.default.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
-    if (!teacher)
+router.get('/:id', async (req, res) => {
+    const [rows] = await db_1.default.execute('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+    if (!rows[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
-    return res.json(teacher);
+    return res.json(rows[0]);
 });
-// Create teacher
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     const { name, subject, phone, salary, join_date } = req.body;
     if (!name)
         return res.status(400).json({ error: 'اسم المعلم مطلوب' });
-    const result = db_1.default.prepare('INSERT INTO teachers (name, subject, phone, salary, join_date) VALUES (?, ?, ?, ?, ?)').run(name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0]);
-    const teacher = db_1.default.prepare('SELECT * FROM teachers WHERE id = ?').get(result.lastInsertRowid);
-    return res.status(201).json(teacher);
+    const [result] = await db_1.default.execute('INSERT INTO teachers (name, subject, phone, salary, join_date) VALUES (?,?,?,?,?)', [name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0]]);
+    const [rows] = await db_1.default.execute('SELECT * FROM teachers WHERE id = ?', [result.insertId]);
+    return res.status(201).json(rows[0]);
 });
-// Update teacher
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
     const { name, subject, phone, salary, join_date, status } = req.body;
-    const existing = db_1.default.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
-    if (!existing)
+    const [existing] = await db_1.default.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+    if (!existing[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
-    db_1.default.prepare('UPDATE teachers SET name=?, subject=?, phone=?, salary=?, join_date=?, status=? WHERE id=?').run(name, subject, phone, salary, join_date, status || 'active', req.params.id);
-    const teacher = db_1.default.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
-    return res.json(teacher);
+    await db_1.default.execute('UPDATE teachers SET name=?, subject=?, phone=?, salary=?, join_date=?, status=? WHERE id=?', [name, subject, phone, salary, join_date, status || 'active', req.params.id]);
+    const [rows] = await db_1.default.execute('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+    return res.json(rows[0]);
 });
-// Delete teacher
-router.delete('/:id', (req, res) => {
-    const existing = db_1.default.prepare('SELECT * FROM teachers WHERE id = ?').get(req.params.id);
-    if (!existing)
+router.delete('/:id', async (req, res) => {
+    const [existing] = await db_1.default.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+    if (!existing[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
-    db_1.default.prepare('DELETE FROM teachers WHERE id = ?').run(req.params.id);
+    await db_1.default.execute('DELETE FROM teachers WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
 });
-// --- Attendance ---
-// Get attendance for a teacher (optionally filter by date range)
-router.get('/:id/attendance', (req, res) => {
-    const { from, to } = req.query;
-    let query = 'SELECT * FROM teacher_attendance WHERE teacher_id = ?';
-    const params = [req.params.id];
-    if (from) {
-        query += ' AND date >= ?';
-        params.push(from);
-    }
-    if (to) {
-        query += ' AND date <= ?';
-        params.push(to);
-    }
-    query += ' ORDER BY date DESC';
-    const records = db_1.default.prepare(query).all(...params);
-    return res.json(records);
-});
-// Get today's attendance for all teachers
-router.get('/attendance/today', (req, res) => {
+// ── Attendance ─────────────────────────────────────────────────────────
+// Today's attendance for ALL teachers
+router.get('/attendance/today', async (_req, res) => {
     const today = new Date().toISOString().split('T')[0];
-    const records = db_1.default.prepare(`
-    SELECT ta.*, t.name as teacher_name, t.subject
+    const [rows] = await db_1.default.execute(`
+    SELECT ta.*, t.name AS teacher_name, t.subject
     FROM teacher_attendance ta
     JOIN teachers t ON t.id = ta.teacher_id
     WHERE ta.date = ?
     ORDER BY ta.created_at DESC
-  `).all(today);
-    return res.json(records);
+  `, [today]);
+    return res.json(rows);
 });
-// Mark/update attendance
-router.post('/:id/attendance', (req, res) => {
+// Attendance history for one teacher
+router.get('/:id/attendance', async (req, res) => {
+    const { from, to } = req.query;
+    let sql = 'SELECT * FROM teacher_attendance WHERE teacher_id = ?';
+    const params = [req.params.id];
+    if (from) {
+        sql += ' AND date >= ?';
+        params.push(from);
+    }
+    if (to) {
+        sql += ' AND date <= ?';
+        params.push(to);
+    }
+    sql += ' ORDER BY date DESC';
+    const [rows] = await db_1.default.execute(sql, params);
+    return res.json(rows);
+});
+// Mark / update attendance (UPSERT)
+router.post('/:id/attendance', async (req, res) => {
     const { date, check_in, check_out, status, notes } = req.body;
     const attendanceDate = date || new Date().toISOString().split('T')[0];
-    const existing = db_1.default.prepare('SELECT * FROM teacher_attendance WHERE teacher_id = ? AND date = ?').get(req.params.id, attendanceDate);
-    if (existing) {
-        db_1.default.prepare('UPDATE teacher_attendance SET check_in=?, check_out=?, status=?, notes=? WHERE teacher_id=? AND date=?').run(check_in, check_out, status || 'present', notes, req.params.id, attendanceDate);
-    }
-    else {
-        db_1.default.prepare('INSERT INTO teacher_attendance (teacher_id, date, check_in, check_out, status, notes) VALUES (?, ?, ?, ?, ?, ?)').run(req.params.id, attendanceDate, check_in, check_out, status || 'present', notes);
-    }
-    const record = db_1.default.prepare('SELECT * FROM teacher_attendance WHERE teacher_id = ? AND date = ?').get(req.params.id, attendanceDate);
-    return res.json(record);
+    await db_1.default.execute(`
+    INSERT INTO teacher_attendance (teacher_id, date, check_in, check_out, status, notes)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE check_in=VALUES(check_in), check_out=VALUES(check_out),
+                            status=VALUES(status), notes=VALUES(notes)
+  `, [req.params.id, attendanceDate, check_in || null, check_out || null, status || 'present', notes || null]);
+    const [rows] = await db_1.default.execute('SELECT * FROM teacher_attendance WHERE teacher_id = ? AND date = ?', [req.params.id, attendanceDate]);
+    return res.json(rows[0]);
 });
-// --- Salary ---
-// Get salary records for a teacher
-router.get('/:id/salary', (req, res) => {
-    const records = db_1.default.prepare('SELECT * FROM teacher_salary WHERE teacher_id = ? ORDER BY year DESC, month DESC').all(req.params.id);
-    return res.json(records);
-});
-// Create/update salary record
-router.post('/:id/salary', (req, res) => {
-    const { month, year, base_salary, deductions, bonuses, paid } = req.body;
-    const net = (base_salary || 0) - (deductions || 0) + (bonuses || 0);
-    const existing = db_1.default.prepare('SELECT * FROM teacher_salary WHERE teacher_id = ? AND month = ? AND year = ?').get(req.params.id, month, year);
-    if (existing) {
-        db_1.default.prepare('UPDATE teacher_salary SET base_salary=?, deductions=?, bonuses=?, net_salary=?, paid=? WHERE teacher_id=? AND month=? AND year=?').run(base_salary, deductions, bonuses, net, paid ? 1 : 0, req.params.id, month, year);
-    }
-    else {
-        db_1.default.prepare('INSERT INTO teacher_salary (teacher_id, month, year, base_salary, deductions, bonuses, net_salary, paid) VALUES (?,?,?,?,?,?,?,?)').run(req.params.id, month, year, base_salary, deductions, bonuses, net, paid ? 1 : 0);
-    }
-    const record = db_1.default.prepare('SELECT * FROM teacher_salary WHERE teacher_id = ? AND month = ? AND year = ?').get(req.params.id, month, year);
-    return res.json(record);
-});
-// Get all salary records (for reports)
-router.get('/salary/all', (req, res) => {
+// ── Salary ─────────────────────────────────────────────────────────────
+router.get('/salary/all', async (req, res) => {
     const { month, year } = req.query;
-    let query = `
-    SELECT ts.*, t.name as teacher_name, t.subject
-    FROM teacher_salary ts
-    JOIN teachers t ON t.id = ts.teacher_id
-    WHERE 1=1
+    let sql = `
+    SELECT ts.*, t.name AS teacher_name, t.subject
+    FROM teacher_salary ts JOIN teachers t ON t.id = ts.teacher_id WHERE 1=1
   `;
     const params = [];
     if (month) {
-        query += ' AND ts.month = ?';
+        sql += ' AND ts.month = ?';
         params.push(month);
     }
     if (year) {
-        query += ' AND ts.year = ?';
+        sql += ' AND ts.year  = ?';
         params.push(year);
     }
-    query += ' ORDER BY ts.year DESC, ts.month DESC';
-    const records = db_1.default.prepare(query).all(...params);
-    return res.json(records);
+    sql += ' ORDER BY ts.year DESC, ts.month DESC';
+    const [rows] = await db_1.default.execute(sql, params);
+    return res.json(rows);
+});
+router.get('/:id/salary', async (req, res) => {
+    const [rows] = await db_1.default.execute('SELECT * FROM teacher_salary WHERE teacher_id = ? ORDER BY year DESC, month DESC', [req.params.id]);
+    return res.json(rows);
+});
+router.post('/:id/salary', async (req, res) => {
+    const { month, year, base_salary, deductions, bonuses, paid } = req.body;
+    const net = (base_salary || 0) - (deductions || 0) + (bonuses || 0);
+    await db_1.default.execute(`
+    INSERT INTO teacher_salary (teacher_id, month, year, base_salary, deductions, bonuses, net_salary, paid)
+    VALUES (?,?,?,?,?,?,?,?)
+    ON DUPLICATE KEY UPDATE base_salary=VALUES(base_salary), deductions=VALUES(deductions),
+                            bonuses=VALUES(bonuses), net_salary=VALUES(net_salary), paid=VALUES(paid)
+  `, [req.params.id, month, year, base_salary || 0, deductions || 0, bonuses || 0, net, paid ? 1 : 0]);
+    const [rows] = await db_1.default.execute('SELECT * FROM teacher_salary WHERE teacher_id = ? AND month = ? AND year = ?', [req.params.id, month, year]);
+    return res.json(rows[0]);
 });
 exports.default = router;
