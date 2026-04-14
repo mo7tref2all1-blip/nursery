@@ -14,6 +14,7 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const teachers_1 = __importDefault(require("./routes/teachers"));
 const students_1 = __importDefault(require("./routes/students"));
 const reports_1 = __importDefault(require("./routes/reports"));
+const nurseries_1 = __importDefault(require("./routes/nurseries"));
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'nursery-secret-key-2024';
@@ -33,18 +34,34 @@ function requireAuth(req, res, next) {
         return res.status(401).json({ error: 'غير مصرح - الرجاء تسجيل الدخول' });
     const token = authHeader.split(' ')[1];
     try {
-        req.user = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+        const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+        req.user = decoded; // { id, username, role, nursery_id }
+        // Determine nurseryId to use for queries
+        if (decoded.role === 'super_admin') {
+            // super_admin can pass ?nursery_id=X or body.nursery_id to filter a specific nursery
+            const qNurseryId = req.query.nursery_id || (req.body && req.body.nursery_id);
+            req.nurseryId = qNurseryId ? parseInt(qNurseryId) : null;
+        }
+        else {
+            req.nurseryId = decoded.nursery_id;
+        }
         return next();
     }
     catch {
         return res.status(401).json({ error: 'رمز المصادقة منتهي الصلاحية' });
     }
 }
+function requireSuperAdmin(req, res, next) {
+    if (req.user?.role !== 'super_admin')
+        return res.status(403).json({ error: 'هذه العملية للمشرف العام فقط' });
+    next();
+}
 // ── API Routes ─────────────────────────────────────────────────────────
 app.use('/api/auth', auth_1.default);
 app.use('/api/teachers', requireAuth, teachers_1.default);
 app.use('/api/students', requireAuth, students_1.default);
 app.use('/api/reports', requireAuth, reports_1.default);
+app.use('/api/nurseries', requireAuth, requireSuperAdmin, nurseries_1.default);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 // ── Serve React frontend (production) ─────────────────────────────────
 const clientDist = path_1.default.join(__dirname, '../../client/dist');

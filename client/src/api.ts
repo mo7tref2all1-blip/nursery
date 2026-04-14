@@ -4,7 +4,7 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -14,7 +14,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // Append nursery_id for super_admin when a nursery is selected
+  const selectedNurseryId = localStorage.getItem('selectedNurseryId');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  if (user.role === 'super_admin' && selectedNurseryId && !url.startsWith('/nurseries')) {
+    const separator = url.includes('?') ? '&' : '?';
+    url = `${url}${separator}nursery_id=${selectedNurseryId}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${url}`, { ...options, headers });
 
   if (res.status === 401) {
     localStorage.removeItem('token');
@@ -134,5 +142,18 @@ export const api = {
       if (class_group) params.set('class_group', class_group);
       return request<any[]>(`/reports/evaluations?${params}`);
     },
+  },
+
+  // Nurseries (super_admin only)
+  nurseries: {
+    list: () => request<any[]>('/nurseries'),
+    create: (data: any) => request<any>('/nurseries', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: number, data: any) => request<any>(`/nurseries/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: number) => request<any>(`/nurseries/${id}`, { method: 'DELETE' }),
+    getAdmins: (id: number) => request<any[]>(`/nurseries/${id}/admins`),
+    addAdmin: (id: number, data: { username: string; password: string }) =>
+      request<any>(`/nurseries/${id}/admins`, { method: 'POST', body: JSON.stringify(data) }),
+    removeAdmin: (nurseryId: number, userId: number) =>
+      request<any>(`/nurseries/${nurseryId}/admins/${userId}`, { method: 'DELETE' }),
   },
 };

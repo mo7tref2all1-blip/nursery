@@ -7,12 +7,25 @@ const express_1 = require("express");
 const db_1 = __importDefault(require("../db"));
 const router = (0, express_1.Router)();
 // ── CRUD ──────────────────────────────────────────────────────────────
-router.get('/', async (_req, res) => {
-    const [rows] = await db_1.default.execute('SELECT * FROM students ORDER BY created_at DESC');
+router.get('/', async (req, res) => {
+    let sql = 'SELECT * FROM students WHERE 1=1';
+    const params = [];
+    if (req.nurseryId) {
+        sql += ' AND nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const [rows] = await db_1.default.execute(sql, params);
     return res.json(rows);
 });
 router.get('/:id', async (req, res) => {
-    const [rows] = await db_1.default.execute('SELECT * FROM students WHERE id = ?', [req.params.id]);
+    let sql = 'SELECT * FROM students WHERE id = ?';
+    const params = [req.params.id];
+    if (req.nurseryId) {
+        sql += ' AND nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    const [rows] = await db_1.default.execute(sql, params);
     if (!rows[0])
         return res.status(404).json({ error: 'الطالب غير موجود' });
     return res.json(rows[0]);
@@ -21,13 +34,20 @@ router.post('/', async (req, res) => {
     const { name, age, class_group, parent_name, parent_phone, join_date } = req.body;
     if (!name)
         return res.status(400).json({ error: 'اسم الطالب مطلوب' });
-    const [result] = await db_1.default.execute('INSERT INTO students (name, age, class_group, parent_name, parent_phone, join_date) VALUES (?,?,?,?,?,?)', [name, age || 0, class_group || '', parent_name || '', parent_phone || '', join_date || new Date().toISOString().split('T')[0]]);
+    const nurseryId = req.nurseryId || 1;
+    const [result] = await db_1.default.execute('INSERT INTO students (name, age, class_group, parent_name, parent_phone, join_date, nursery_id) VALUES (?,?,?,?,?,?,?)', [name, age || 0, class_group || '', parent_name || '', parent_phone || '', join_date || new Date().toISOString().split('T')[0], nurseryId]);
     const [rows] = await db_1.default.execute('SELECT * FROM students WHERE id = ?', [result.insertId]);
     return res.status(201).json(rows[0]);
 });
 router.put('/:id', async (req, res) => {
     const { name, age, class_group, parent_name, parent_phone, join_date, status } = req.body;
-    const [existing] = await db_1.default.execute('SELECT id FROM students WHERE id = ?', [req.params.id]);
+    let checkSql = 'SELECT id FROM students WHERE id = ?';
+    const checkParams = [req.params.id];
+    if (req.nurseryId) {
+        checkSql += ' AND nursery_id = ?';
+        checkParams.push(req.nurseryId);
+    }
+    const [existing] = await db_1.default.execute(checkSql, checkParams);
     if (!existing[0])
         return res.status(404).json({ error: 'الطالب غير موجود' });
     await db_1.default.execute('UPDATE students SET name=?, age=?, class_group=?, parent_name=?, parent_phone=?, join_date=?, status=? WHERE id=?', [name, age, class_group, parent_name, parent_phone, join_date, status || 'active', req.params.id]);
@@ -35,22 +55,34 @@ router.put('/:id', async (req, res) => {
     return res.json(rows[0]);
 });
 router.delete('/:id', async (req, res) => {
-    const [existing] = await db_1.default.execute('SELECT id FROM students WHERE id = ?', [req.params.id]);
+    let checkSql = 'SELECT id FROM students WHERE id = ?';
+    const checkParams = [req.params.id];
+    if (req.nurseryId) {
+        checkSql += ' AND nursery_id = ?';
+        checkParams.push(req.nurseryId);
+    }
+    const [existing] = await db_1.default.execute(checkSql, checkParams);
     if (!existing[0])
         return res.status(404).json({ error: 'الطالب غير موجود' });
     await db_1.default.execute('DELETE FROM students WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
 });
 // ── Attendance ─────────────────────────────────────────────────────────
-router.get('/attendance/today', async (_req, res) => {
+router.get('/attendance/today', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
-    const [rows] = await db_1.default.execute(`
+    let sql = `
     SELECT sa.*, s.name AS student_name, s.class_group
     FROM student_attendance sa
     JOIN students s ON s.id = sa.student_id
     WHERE sa.date = ?
-    ORDER BY sa.created_at DESC
-  `, [today]);
+  `;
+    const params = [today];
+    if (req.nurseryId) {
+        sql += ' AND s.nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    sql += ' ORDER BY sa.created_at DESC';
+    const [rows] = await db_1.default.execute(sql, params);
     return res.json(rows);
 });
 router.get('/:id/attendance', async (req, res) => {
@@ -89,6 +121,10 @@ router.get('/evaluations/all', async (req, res) => {
     FROM student_evaluations se JOIN students s ON s.id = se.student_id WHERE 1=1
   `;
     const params = [];
+    if (req.nurseryId) {
+        sql += ' AND s.nursery_id = ?';
+        params.push(req.nurseryId);
+    }
     if (month) {
         sql += ' AND se.month = ?';
         params.push(month);

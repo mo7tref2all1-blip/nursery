@@ -20,8 +20,11 @@ router.post('/login', async (req, res) => {
     const valid = await bcryptjs_1.default.compare(password, user.password_hash);
     if (!valid)
         return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-    const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    return res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+    const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username, role: user.role, nursery_id: user.nursery_id }, JWT_SECRET, { expiresIn: '24h' });
+    return res.json({
+        token,
+        user: { id: user.id, username: user.username, role: user.role, nursery_id: user.nursery_id }
+    });
 });
 router.post('/verify', (req, res) => {
     const authHeader = req.headers.authorization;

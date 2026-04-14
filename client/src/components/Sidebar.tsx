@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -7,24 +7,57 @@ import {
   BarChart3,
   LogOut,
   Baby,
+  Building2,
+  ChevronDown,
 } from 'lucide-react';
+import { api } from '../api';
 
-const navItems = [
-  { path: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
+const nurseryAdminNav = [
+  { path: '/dashboard', label: 'الرئيسية', icon: LayoutDashboard },
   { path: '/teachers', label: 'المعلمون', icon: GraduationCap },
   { path: '/students', label: 'الأطفال', icon: Users },
   { path: '/reports', label: 'التقارير', icon: BarChart3 },
 ];
 
+const superAdminNav = [
+  { path: '/super/dashboard', label: 'لوحة التحكم الرئيسية', icon: LayoutDashboard },
+  { path: '/super/nurseries', label: 'الحضانات', icon: Building2 },
+];
+
 export default function Sidebar() {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isSuperAdmin = user.role === 'super_admin';
+
+  const [nurseries, setNurseries] = useState<any[]>([]);
+  const [selectedNurseryId, setSelectedNurseryId] = useState<string>(
+    localStorage.getItem('selectedNurseryId') || ''
+  );
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      api.nurseries.list().then(setNurseries).catch(() => {});
+    }
+  }, [isSuperAdmin]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('selectedNurseryId');
     navigate('/login');
   };
+
+  const handleNurseryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedNurseryId(val);
+    if (val) {
+      localStorage.setItem('selectedNurseryId', val);
+    } else {
+      localStorage.removeItem('selectedNurseryId');
+    }
+  };
+
+  const navItems = isSuperAdmin ? superAdminNav : nurseryAdminNav;
 
   return (
     <div className="w-64 min-h-screen flex flex-col bg-gradient-to-b from-indigo-900 via-purple-900 to-indigo-800 shadow-2xl">
@@ -36,10 +69,34 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-white font-bold text-lg leading-tight">نظام الحضانة</h1>
-            <p className="text-indigo-300 text-xs">إدارة متكاملة</p>
+            <p className="text-indigo-300 text-xs">
+              {isSuperAdmin ? 'منصة متعددة الحضانات' : 'إدارة متكاملة'}
+            </p>
           </div>
         </div>
       </div>
+
+      {/* Super admin nursery selector */}
+      {isSuperAdmin && (
+        <div className="px-4 pt-4">
+          <p className="text-indigo-300 text-xs font-semibold mb-1.5 px-1">عرض بيانات حضانة</p>
+          <div className="relative">
+            <select
+              value={selectedNurseryId}
+              onChange={handleNurseryChange}
+              className="w-full bg-white/10 text-white text-sm rounded-xl px-3 py-2 pr-8 border border-white/20 focus:outline-none focus:border-white/40 appearance-none cursor-pointer"
+            >
+              <option value="" className="bg-indigo-900 text-white">-- كل الحضانات --</option>
+              {nurseries.map((n: any) => (
+                <option key={n.id} value={n.id} className="bg-indigo-900 text-white">
+                  {n.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-300 pointer-events-none" />
+          </div>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
@@ -70,7 +127,9 @@ export default function Sidebar() {
             </div>
             <div>
               <p className="text-white text-sm font-semibold">{user.username || 'Admin'}</p>
-              <p className="text-indigo-300 text-xs">مسؤول النظام</p>
+              <p className="text-indigo-300 text-xs">
+                {isSuperAdmin ? 'المشرف العام' : 'مسؤول الحضانة'}
+              </p>
             </div>
           </div>
         </div>

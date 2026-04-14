@@ -5,13 +5,26 @@ const router = Router();
 
 // ── CRUD ──────────────────────────────────────────────────────────────
 
-router.get('/', async (_req: Request, res: Response) => {
-  const [rows]: any = await pool.execute('SELECT * FROM teachers ORDER BY created_at DESC');
+router.get('/', async (req: Request, res: Response) => {
+  let sql = 'SELECT * FROM teachers WHERE 1=1';
+  const params: any[] = [];
+  if ((req as any).nurseryId) {
+    sql += ' AND nursery_id = ?';
+    params.push((req as any).nurseryId);
+  }
+  sql += ' ORDER BY created_at DESC';
+  const [rows]: any = await pool.execute(sql, params);
   return res.json(rows);
 });
 
 router.get('/:id', async (req: Request, res: Response) => {
-  const [rows]: any = await pool.execute('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+  let sql = 'SELECT * FROM teachers WHERE id = ?';
+  const params: any[] = [req.params.id];
+  if ((req as any).nurseryId) {
+    sql += ' AND nursery_id = ?';
+    params.push((req as any).nurseryId);
+  }
+  const [rows]: any = await pool.execute(sql, params);
   if (!rows[0]) return res.status(404).json({ error: 'المعلم غير موجود' });
   return res.json(rows[0]);
 });
@@ -20,9 +33,10 @@ router.post('/', async (req: Request, res: Response) => {
   const { name, subject, phone, salary, join_date } = req.body;
   if (!name) return res.status(400).json({ error: 'اسم المعلم مطلوب' });
 
+  const nurseryId = (req as any).nurseryId || 1;
   const [result]: any = await pool.execute(
-    'INSERT INTO teachers (name, subject, phone, salary, join_date) VALUES (?,?,?,?,?)',
-    [name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0]]
+    'INSERT INTO teachers (name, subject, phone, salary, join_date, nursery_id) VALUES (?,?,?,?,?,?)',
+    [name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0], nurseryId]
   );
   const [rows]: any = await pool.execute('SELECT * FROM teachers WHERE id = ?', [result.insertId]);
   return res.status(201).json(rows[0]);
@@ -30,7 +44,13 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.put('/:id', async (req: Request, res: Response) => {
   const { name, subject, phone, salary, join_date, status } = req.body;
-  const [existing]: any = await pool.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+  let checkSql = 'SELECT id FROM teachers WHERE id = ?';
+  const checkParams: any[] = [req.params.id];
+  if ((req as any).nurseryId) {
+    checkSql += ' AND nursery_id = ?';
+    checkParams.push((req as any).nurseryId);
+  }
+  const [existing]: any = await pool.execute(checkSql, checkParams);
   if (!existing[0]) return res.status(404).json({ error: 'المعلم غير موجود' });
 
   await pool.execute(
@@ -42,7 +62,13 @@ router.put('/:id', async (req: Request, res: Response) => {
 });
 
 router.delete('/:id', async (req: Request, res: Response) => {
-  const [existing]: any = await pool.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+  let checkSql = 'SELECT id FROM teachers WHERE id = ?';
+  const checkParams: any[] = [req.params.id];
+  if ((req as any).nurseryId) {
+    checkSql += ' AND nursery_id = ?';
+    checkParams.push((req as any).nurseryId);
+  }
+  const [existing]: any = await pool.execute(checkSql, checkParams);
   if (!existing[0]) return res.status(404).json({ error: 'المعلم غير موجود' });
   await pool.execute('DELETE FROM teachers WHERE id = ?', [req.params.id]);
   return res.json({ success: true });
@@ -50,16 +76,22 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
 // ── Attendance ─────────────────────────────────────────────────────────
 
-// Today's attendance for ALL teachers
-router.get('/attendance/today', async (_req: Request, res: Response) => {
+// Today's attendance for ALL teachers (filtered by nursery)
+router.get('/attendance/today', async (req: Request, res: Response) => {
   const today = new Date().toISOString().split('T')[0];
-  const [rows]: any = await pool.execute(`
+  let sql = `
     SELECT ta.*, t.name AS teacher_name, t.subject
     FROM teacher_attendance ta
     JOIN teachers t ON t.id = ta.teacher_id
     WHERE ta.date = ?
-    ORDER BY ta.created_at DESC
-  `, [today]);
+  `;
+  const params: any[] = [today];
+  if ((req as any).nurseryId) {
+    sql += ' AND t.nursery_id = ?';
+    params.push((req as any).nurseryId);
+  }
+  sql += ' ORDER BY ta.created_at DESC';
+  const [rows]: any = await pool.execute(sql, params);
   return res.json(rows);
 });
 
@@ -103,6 +135,10 @@ router.get('/salary/all', async (req: Request, res: Response) => {
     FROM teacher_salary ts JOIN teachers t ON t.id = ts.teacher_id WHERE 1=1
   `;
   const params: any[] = [];
+  if ((req as any).nurseryId) {
+    sql += ' AND t.nursery_id = ?';
+    params.push((req as any).nurseryId);
+  }
   if (month) { sql += ' AND ts.month = ?'; params.push(month); }
   if (year)  { sql += ' AND ts.year  = ?'; params.push(year); }
   sql += ' ORDER BY ts.year DESC, ts.month DESC';

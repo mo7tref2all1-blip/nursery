@@ -20,12 +20,15 @@ router.post('/login', async (req: Request, res: Response) => {
   if (!valid) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
 
   const token = jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
+    { id: user.id, username: user.username, role: user.role, nursery_id: user.nursery_id },
     JWT_SECRET,
     { expiresIn: '24h' }
   );
 
-  return res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+  return res.json({
+    token,
+    user: { id: user.id, username: user.username, role: user.role, nursery_id: user.nursery_id }
+  });
 });
 
 router.post('/verify', (req: Request, res: Response) => {

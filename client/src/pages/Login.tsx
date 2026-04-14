@@ -18,7 +18,11 @@ export default function Login() {
       const { token, user } = await api.auth.login(username, password);
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      navigate('/dashboard');
+      if (user.role === 'super_admin') {
+        navigate('/super/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'حدث خطأ في تسجيل الدخول');
     } finally {
@@ -108,10 +112,9 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 p-4 bg-indigo-50 rounded-xl">
-            <p className="text-xs text-indigo-600 text-center font-medium">
-              بيانات الدخول الافتراضية: admin / admin123
-            </p>
+          <div className="mt-6 p-4 bg-indigo-50 rounded-xl space-y-1">
+            <p className="text-xs text-indigo-600 text-center font-medium">مشرف الحضانة: admin / admin123</p>
+            <p className="text-xs text-purple-600 text-center font-medium">المشرف العام: superadmin / super123</p>
           </div>
         </div>
       </div>

@@ -1,7 +1,30 @@
 export interface User {
   id: number;
   username: string;
+  role: 'super_admin' | 'nursery_admin';
+  nursery_id: number | null;
+}
+
+export interface Nursery {
+  id: number;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  status: 'active' | 'inactive';
+  plan: string;
+  teacher_count?: number;
+  student_count?: number;
+  admin_count?: number;
+  created_at: string;
+}
+
+export interface NurseryAdmin {
+  id: number;
+  username: string;
   role: string;
+  nursery_id: number;
+  created_at: string;
 }
 
 export interface Teacher {

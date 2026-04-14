@@ -7,12 +7,25 @@ const express_1 = require("express");
 const db_1 = __importDefault(require("../db"));
 const router = (0, express_1.Router)();
 // ── CRUD ──────────────────────────────────────────────────────────────
-router.get('/', async (_req, res) => {
-    const [rows] = await db_1.default.execute('SELECT * FROM teachers ORDER BY created_at DESC');
+router.get('/', async (req, res) => {
+    let sql = 'SELECT * FROM teachers WHERE 1=1';
+    const params = [];
+    if (req.nurseryId) {
+        sql += ' AND nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    sql += ' ORDER BY created_at DESC';
+    const [rows] = await db_1.default.execute(sql, params);
     return res.json(rows);
 });
 router.get('/:id', async (req, res) => {
-    const [rows] = await db_1.default.execute('SELECT * FROM teachers WHERE id = ?', [req.params.id]);
+    let sql = 'SELECT * FROM teachers WHERE id = ?';
+    const params = [req.params.id];
+    if (req.nurseryId) {
+        sql += ' AND nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    const [rows] = await db_1.default.execute(sql, params);
     if (!rows[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
     return res.json(rows[0]);
@@ -21,13 +34,20 @@ router.post('/', async (req, res) => {
     const { name, subject, phone, salary, join_date } = req.body;
     if (!name)
         return res.status(400).json({ error: 'اسم المعلم مطلوب' });
-    const [result] = await db_1.default.execute('INSERT INTO teachers (name, subject, phone, salary, join_date) VALUES (?,?,?,?,?)', [name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0]]);
+    const nurseryId = req.nurseryId || 1;
+    const [result] = await db_1.default.execute('INSERT INTO teachers (name, subject, phone, salary, join_date, nursery_id) VALUES (?,?,?,?,?,?)', [name, subject || '', phone || '', salary || 0, join_date || new Date().toISOString().split('T')[0], nurseryId]);
     const [rows] = await db_1.default.execute('SELECT * FROM teachers WHERE id = ?', [result.insertId]);
     return res.status(201).json(rows[0]);
 });
 router.put('/:id', async (req, res) => {
     const { name, subject, phone, salary, join_date, status } = req.body;
-    const [existing] = await db_1.default.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+    let checkSql = 'SELECT id FROM teachers WHERE id = ?';
+    const checkParams = [req.params.id];
+    if (req.nurseryId) {
+        checkSql += ' AND nursery_id = ?';
+        checkParams.push(req.nurseryId);
+    }
+    const [existing] = await db_1.default.execute(checkSql, checkParams);
     if (!existing[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
     await db_1.default.execute('UPDATE teachers SET name=?, subject=?, phone=?, salary=?, join_date=?, status=? WHERE id=?', [name, subject, phone, salary, join_date, status || 'active', req.params.id]);
@@ -35,23 +55,35 @@ router.put('/:id', async (req, res) => {
     return res.json(rows[0]);
 });
 router.delete('/:id', async (req, res) => {
-    const [existing] = await db_1.default.execute('SELECT id FROM teachers WHERE id = ?', [req.params.id]);
+    let checkSql = 'SELECT id FROM teachers WHERE id = ?';
+    const checkParams = [req.params.id];
+    if (req.nurseryId) {
+        checkSql += ' AND nursery_id = ?';
+        checkParams.push(req.nurseryId);
+    }
+    const [existing] = await db_1.default.execute(checkSql, checkParams);
     if (!existing[0])
         return res.status(404).json({ error: 'المعلم غير موجود' });
     await db_1.default.execute('DELETE FROM teachers WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
 });
 // ── Attendance ─────────────────────────────────────────────────────────
-// Today's attendance for ALL teachers
-router.get('/attendance/today', async (_req, res) => {
+// Today's attendance for ALL teachers (filtered by nursery)
+router.get('/attendance/today', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
-    const [rows] = await db_1.default.execute(`
+    let sql = `
     SELECT ta.*, t.name AS teacher_name, t.subject
     FROM teacher_attendance ta
     JOIN teachers t ON t.id = ta.teacher_id
     WHERE ta.date = ?
-    ORDER BY ta.created_at DESC
-  `, [today]);
+  `;
+    const params = [today];
+    if (req.nurseryId) {
+        sql += ' AND t.nursery_id = ?';
+        params.push(req.nurseryId);
+    }
+    sql += ' ORDER BY ta.created_at DESC';
+    const [rows] = await db_1.default.execute(sql, params);
     return res.json(rows);
 });
 // Attendance history for one teacher
@@ -92,6 +124,10 @@ router.get('/salary/all', async (req, res) => {
     FROM teacher_salary ts JOIN teachers t ON t.id = ts.teacher_id WHERE 1=1
   `;
     const params = [];
+    if (req.nurseryId) {
+        sql += ' AND t.nursery_id = ?';
+        params.push(req.nurseryId);
+    }
     if (month) {
         sql += ' AND ts.month = ?';
         params.push(month);
