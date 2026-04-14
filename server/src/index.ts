@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import fs from 'fs';
 import { Request, Response, NextFunction } from 'express';
 
 import authRoutes from './routes/auth';
@@ -11,12 +13,16 @@ import reportRoutes from './routes/reports';
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'nursery-secret-key-2024';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Middleware
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
-  credentials: true
-}));
+if (!IS_PRODUCTION) {
+  // Dev: allow Vite dev server
+  app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:3000'], credentials: true }));
+} else {
+  // Production: same-origin requests only (React served by Express)
+  app.use(cors({ credentials: true }));
+}
 app.use(express.json());
 
 // Auth middleware
@@ -45,8 +51,19 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// --- Serve React frontend in production ---
+const clientDist = path.join(__dirname, '../../client/dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  // All non-API routes → React app (handles client-side routing)
+  app.get('*', (_req: Request, res: Response) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+  if (!IS_PRODUCTION) console.log(`http://localhost:${PORT}`);
 });
 
 export default app;

@@ -1,12 +1,7 @@
 node_modules/
 client/node_modules/
 server/node_modules/
-client/dist/
-server/dist/
 *.db
 *.db-shm
 *.db-wal
-package-lock.json
-client/package-lock.json
-server/package-lock.json
 .env
